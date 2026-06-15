@@ -7,3 +7,7 @@ pymupdf
 pytest
 feedparser
 python-dotenv
+# Optional GLiNER extractor
+# pip install gliner torch
+gliner
+torch
