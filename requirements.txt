@@ -5,3 +5,5 @@ requests
 pydantic
 pymupdf
 pytest
+feedparser
+python-dotenv
