@@ -1,3 +1,7 @@
+import pytest
+
+pytest.importorskip("fastapi")
+
 from fastapi.testclient import TestClient
 
 from backend.main import app
@@ -31,10 +35,15 @@ def test_search_endpoint_with_monkeypatched_service(monkeypatch) -> None:
         ]
 
     monkeypatch.setattr("backend.api.routes.search_papers", fake_search_papers)
+    monkeypatch.setattr("backend.api.routes.download_pdf", lambda pdf_url, paper_id: "/tmp/paper.pdf")
+    monkeypatch.setattr(
+        "backend.api.routes.extract_text_from_pdf",
+        lambda pdf_path, max_pages=12: "We introduce CulturalVQA, a benchmark for cultural understanding.",
+    )
 
     response = client.post(
         "/search",
-        json={"query": "vision language datasets", "max_papers": 2},
+        json={"query": "vision language datasets", "max_papers": 2, "extract_from_pdfs": True},
     )
 
     assert response.status_code == 200
@@ -42,3 +51,5 @@ def test_search_endpoint_with_monkeypatched_service(monkeypatch) -> None:
     assert payload["query"] == "vision language datasets"
     assert len(payload["papers"]) == 1
     assert payload["papers"][0]["paper_id"] == "paper-1"
+    assert len(payload["candidates"]) >= 1
+    assert payload["candidates"][0]["name"] == "CulturalVQA"
