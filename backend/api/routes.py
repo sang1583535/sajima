@@ -1,6 +1,13 @@
 from fastapi import APIRouter, HTTPException
 
-from backend.models.schemas import DatasetCandidate, Paper, SearchRequest, SearchResponse
+from backend.models.schemas import (
+    DatasetCandidate,
+    Paper,
+    SearchRequest,
+    SearchResponse,
+    TrendRequest,
+    TrendResponse,
+)
 from backend.services.candidate_merger import merge_candidates
 from backend.services.dataset_extractor import extract_dataset_candidates_from_text
 from backend.services.pdf_downloader import download_pdf
@@ -9,8 +16,10 @@ from backend.services.model_extractor import (
     extract_candidates_with_gliner,
     get_gliner_model,
 )
+from backend.services.manifest import save_trend_manifest
 from backend.services.ranker import rank_candidates
 from backend.services.paper_retriever import search_papers
+from backend.services.trend_analyzer import analyze_trends
 
 router = APIRouter()
 
@@ -43,6 +52,50 @@ def search(request: SearchRequest) -> SearchResponse:
         raise HTTPException(status_code=502, detail=f"Search provider error: {detail}") from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Search failed: {exc}") from exc
+
+
+@router.post("/trend", response_model=TrendResponse)
+def analyze_topic_trend(request: TrendRequest) -> TrendResponse:
+    if not request.query.strip():
+        raise HTTPException(status_code=400, detail="Query must not be empty.")
+
+    try:
+        papers = search_papers(query=request.query, max_papers=request.max_papers)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        detail = str(exc)
+        detail_lower = detail.lower()
+        if "429" in detail:
+            raise HTTPException(
+                status_code=503,
+                detail="Search provider is rate-limiting requests right now. Please retry in a moment.",
+            ) from exc
+        if "timed out" in detail_lower or "timeout" in detail_lower:
+            raise HTTPException(
+                status_code=504,
+                detail="Search provider timed out while retrieving papers. Please retry or reduce max_papers.",
+            ) from exc
+        raise HTTPException(status_code=502, detail=f"Search provider error: {detail}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Paper retrieval failed: {exc}") from exc
+
+    try:
+        trend = analyze_trends(papers, top_k_keywords=request.top_k_keywords)
+        response = TrendResponse(
+            query=request.query,
+            papers=papers,
+            summary=trend.get("summary", {}),
+            yearly_counts=trend.get("yearly_counts", []),
+            primary_category_counts=trend.get("primary_category_counts", []),
+            category_counts=trend.get("category_counts", []),
+            top_keywords=trend.get("top_keywords", []),
+            suggested_query_terms=trend.get("suggested_query_terms", []),
+        )
+        manifest_path = save_trend_manifest(request.query, response.model_dump())
+        return response.model_copy(update={"manifest_path": manifest_path or None})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Trend analysis failed: {exc}") from exc
 
 
 def _metadata_text(paper: Paper) -> str:

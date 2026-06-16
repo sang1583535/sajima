@@ -84,6 +84,36 @@ def _parse_authors(raw_authors: object) -> list[Author]:
     return authors
 
 
+def _extract_primary_category(entry: object) -> str | None:
+    raw = getattr(entry, "arxiv_primary_category", None)
+    if isinstance(raw, dict):
+        term = raw.get("term")
+        return _clean_text(term)
+    term = getattr(raw, "term", None)
+    return _clean_text(term)
+
+
+def _extract_categories(entry: object) -> list[str]:
+    tags = getattr(entry, "tags", None)
+    if not isinstance(tags, list):
+        return []
+
+    categories: list[str] = []
+    seen: set[str] = set()
+    for tag in tags:
+        term = None
+        if isinstance(tag, dict):
+            term = tag.get("term")
+        else:
+            term = getattr(tag, "term", None)
+
+        cleaned_term = _clean_text(term)
+        if cleaned_term and cleaned_term not in seen:
+            seen.add(cleaned_term)
+            categories.append(cleaned_term)
+    return categories
+
+
 def _parse_arxiv_response(response_text: str) -> list[Paper]:
     if feedparser is not None:
         feed = feedparser.parse(response_text)
@@ -96,7 +126,10 @@ def _parse_arxiv_response(response_text: str) -> list[Paper]:
             paper_id = _extract_arxiv_id(getattr(entry, "id", None))
             title = _clean_text(getattr(entry, "title", None)) or "Untitled"
             abstract = _clean_text(getattr(entry, "summary", None))
-            year = _parse_year(getattr(entry, "published", None))
+            published_date = _clean_text(getattr(entry, "published", None))
+            year = _parse_year(published_date)
+            primary_category = _extract_primary_category(entry)
+            categories = _extract_categories(entry)
             authors = _parse_authors(getattr(entry, "authors", []))
             url = _clean_text(getattr(entry, "link", None))
             open_access_pdf_url = _extract_pdf_url(entry, paper_id)
@@ -107,6 +140,9 @@ def _parse_arxiv_response(response_text: str) -> list[Paper]:
                     title=title,
                     abstract=abstract,
                     year=year,
+                    published_date=published_date,
+                    primary_category=primary_category,
+                    categories=categories,
                     authors=authors,
                     venue="arXiv",
                     url=url,
@@ -122,12 +158,27 @@ def _parse_arxiv_response(response_text: str) -> list[Paper]:
     except ET.ParseError:
         return []
 
-    namespace = {"atom": "http://www.w3.org/2005/Atom"}
+    namespace = {
+        "atom": "http://www.w3.org/2005/Atom",
+        "arxiv": "http://arxiv.org/schemas/atom",
+    }
     for entry in root.findall("atom:entry", namespace):
         entry_id = entry.findtext("atom:id", default="", namespaces=namespace)
         title = _clean_text(entry.findtext("atom:title", default="", namespaces=namespace)) or "Untitled"
         abstract = _clean_text(entry.findtext("atom:summary", default="", namespaces=namespace))
-        year = _parse_year(entry.findtext("atom:published", default="", namespaces=namespace))
+        published_date = _clean_text(entry.findtext("atom:published", default="", namespaces=namespace))
+        year = _parse_year(published_date)
+        primary_category_element = entry.find("arxiv:primary_category", namespace)
+        primary_category = _clean_text(
+            primary_category_element.attrib.get("term") if primary_category_element is not None else None
+        )
+        categories: list[str] = []
+        seen_categories: set[str] = set()
+        for category_element in entry.findall("atom:category", namespace):
+            term = _clean_text(category_element.attrib.get("term"))
+            if term and term not in seen_categories:
+                seen_categories.add(term)
+                categories.append(term)
 
         authors = []
         for author in entry.findall("atom:author", namespace):
@@ -154,6 +205,9 @@ def _parse_arxiv_response(response_text: str) -> list[Paper]:
                 title=title,
                 abstract=abstract,
                 year=year,
+                published_date=published_date,
+                primary_category=primary_category,
+                categories=categories,
                 authors=authors,
                 venue="arXiv",
                 url=url,

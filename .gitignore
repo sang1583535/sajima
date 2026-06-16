@@ -45,6 +45,8 @@ htmlcov/
 .cache
 .cache/
 .models/
+data/processed/**
+!data/processed/.gitkeep
 nosetests.xml
 coverage.xml
 *.cover

@@ -9,11 +9,14 @@ from backend.services.paper_retriever import (
 
 
 SAMPLE_ATOM = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<feed xmlns=\"http://www.w3.org/2005/Atom\">
+<feed xmlns=\"http://www.w3.org/2005/Atom\" xmlns:arxiv=\"http://arxiv.org/schemas/atom\">
   <entry>
     <id>http://arxiv.org/abs/2501.12345v2</id>
     <updated>2025-01-20T00:00:00Z</updated>
     <published>2025-01-19T00:00:00Z</published>
+        <arxiv:primary_category term=\"cs.CV\"/>
+        <category term=\"cs.CV\"/>
+        <category term=\"cs.AI\"/>
     <title>  Datasets for Cultural Understanding in VLMs  </title>
     <summary>  We study datasets for cultural understanding.  </summary>
     <author><name>Jane Doe</name></author>
@@ -21,6 +24,21 @@ SAMPLE_ATOM = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
     <link href=\"http://arxiv.org/abs/2501.12345v2\" rel=\"alternate\" type=\"text/html\"/>
     <link href=\"http://arxiv.org/pdf/2501.12345v2\" rel=\"related\" type=\"application/pdf\"/>
   </entry>
+</feed>
+"""
+
+SAMPLE_ATOM_MISSING_CATEGORIES = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<feed xmlns=\"http://www.w3.org/2005/Atom\" xmlns:arxiv=\"http://arxiv.org/schemas/atom\">
+    <entry>
+        <id>http://arxiv.org/abs/2502.54321v1</id>
+        <updated>2025-02-20T00:00:00Z</updated>
+        <published>2025-02-19T00:00:00Z</published>
+        <title>  Another Paper Title  </title>
+        <summary>  Abstract text.  </summary>
+        <author><name>Alex Doe</name></author>
+        <link href=\"http://arxiv.org/abs/2502.54321v1\" rel=\"alternate\" type=\"text/html\"/>
+        <link href=\"http://arxiv.org/pdf/2502.54321v1\" rel=\"related\" type=\"application/pdf\"/>
+    </entry>
 </feed>
 """
 
@@ -46,10 +64,23 @@ def test_parse_arxiv_response() -> None:
     assert paper.title == "Datasets for Cultural Understanding in VLMs"
     assert paper.abstract == "We study datasets for cultural understanding."
     assert paper.year == 2025
+    assert paper.published_date == "2025-01-19T00:00:00Z"
+    assert paper.primary_category == "cs.CV"
+    assert paper.categories == ["cs.CV", "cs.AI"]
     assert [author.name for author in paper.authors] == ["Jane Doe", "John Doe"]
     assert paper.url == "http://arxiv.org/abs/2501.12345v2"
     assert paper.open_access_pdf_url == "http://arxiv.org/pdf/2501.12345v2"
     assert paper.source == "arxiv"
+
+
+def test_parse_arxiv_response_missing_categories_does_not_crash() -> None:
+    papers = _parse_arxiv_response(SAMPLE_ATOM_MISSING_CATEGORIES)
+
+    assert len(papers) == 1
+    paper = papers[0]
+    assert paper.paper_id == "2502.54321"
+    assert paper.primary_category is None
+    assert paper.categories == []
 
 
 def test_search_papers_empty_query_raises() -> None:

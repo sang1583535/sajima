@@ -19,6 +19,9 @@ class Paper(BaseModel):
     title: str
     abstract: Optional[str] = None
     year: Optional[int] = None
+    published_date: Optional[str] = None
+    primary_category: Optional[str] = None
+    categories: list[str] = Field(default_factory=list)
     authors: list[Author] = Field(default_factory=list)
     venue: Optional[str] = None
     url: Optional[str] = None
@@ -46,3 +49,21 @@ class SearchResponse(BaseModel):
     papers: list[Paper]
     candidates: list[DatasetCandidate]
     warnings: list[str] = Field(default_factory=list)
+
+
+class TrendRequest(BaseModel):
+    query: str
+    max_papers: int = 100
+    top_k_keywords: int = 20
+
+
+class TrendResponse(BaseModel):
+    query: str
+    papers: list[Paper]
+    summary: dict
+    yearly_counts: list[dict]
+    primary_category_counts: list[dict]
+    category_counts: list[dict]
+    top_keywords: list[dict]
+    suggested_query_terms: list[str] = Field(default_factory=list)
+    manifest_path: Optional[str] = None
